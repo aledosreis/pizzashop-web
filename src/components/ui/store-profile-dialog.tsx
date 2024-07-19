@@ -25,7 +25,7 @@ import { Textarea } from './textarea'
 
 const storeProfileSchema = z.object({
   name: z.string().min(1),
-  descriprion: z.string(),
+  description: z.string().nullable(),
 })
 
 type StoreProfileSchema = z.infer<typeof storeProfileSchema>
@@ -47,33 +47,49 @@ export function StoreProfileDialog() {
     resolver: zodResolver(storeProfileSchema),
     values: {
       name: managedRestaurant?.name ?? '',
-      descriprion: managedRestaurant?.description ?? '',
+      description: managedRestaurant?.description ?? '',
     },
   })
 
+  function updateManagedRestaurantCache({
+    name,
+    description,
+  }: StoreProfileSchema) {
+    const cached = queryClient.getQueryData<GetManagedRestaurantResponse>([
+      'managed-restaurant',
+    ])
+
+    if (cached) {
+      queryClient.setQueryData<GetManagedRestaurantResponse>(
+        ['managed-restaurant'],
+        {
+          ...cached,
+          name,
+          description,
+        },
+      )
+    }
+
+    return { cached }
+  }
+
   const { mutateAsync: updateProfileFn } = useMutation({
     mutationFn: updateProfile,
-    onSuccess(_, { name, description }) {
-      const cached = queryClient.getQueryData<GetManagedRestaurantResponse>([
-        'managed-restaurant',
-      ])
+    onMutate({ name, description }) {
+      const { cached } = updateManagedRestaurantCache({ name, description })
 
-      if (cached) {
-        queryClient.setQueryData<GetManagedRestaurantResponse>(
-          ['managed-restaurant'],
-          {
-            ...cached,
-            name,
-            description,
-          },
-        )
+      return { previousProfile: cached }
+    },
+    onError(_, __, context) {
+      if (context?.previousProfile) {
+        updateManagedRestaurantCache(context.previousProfile)
       }
     },
   })
 
   async function handleUpdateProfile(data: StoreProfileSchema) {
     try {
-      await updateProfileFn({ name: data.name, description: data.descriprion })
+      await updateProfileFn({ name: data.name, description: data.description })
 
       toast.success('Perfil atualizado com sucesso!')
     } catch {
@@ -106,7 +122,7 @@ export function StoreProfileDialog() {
             <Textarea
               className="col-span-3"
               id="name"
-              {...register('descriprion')}
+              {...register('description')}
             />
           </div>
         </div>
